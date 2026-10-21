@@ -1,16 +1,22 @@
-; RUN: opt -passes="globalopt" < %s -o /dev/null -debug-pass-manager 2>&1 | FileCheck %s
-; RUN: opt -strip-debug -S < %s | opt -passes="globalopt" -o /dev/null -debug-pass-manager 2>&1 | FileCheck %s
+; REQUIRES: powerpc-registered-target, x86-registered-target
+; RUN: opt -passes="globalopt" -mtriple=powerpc64le-unknown-linux-gnu -ppc-enable-coldcc < %s -o /dev/null -debug-pass-manager 2>&1 | FileCheck %s --check-prefix=COLDSCAN
+; RUN: opt -strip-debug -S < %s | opt -passes="globalopt" -mtriple=powerpc64le-unknown-linux-gnu -ppc-enable-coldcc -o /dev/null -debug-pass-manager 2>&1 | FileCheck %s --check-prefix=COLDSCAN
+; RUN: opt -passes="globalopt" -mtriple=x86_64-unknown-linux-gnu < %s -o /dev/null -debug-pass-manager 2>&1 | FileCheck %s --check-prefix=NOCOLDSCAN --implicit-check-not=BlockFrequencyAnalysis --implicit-check-not=LoopAnalysis
+; RUN: opt -strip-debug -S < %s | opt -passes="globalopt" -mtriple=x86_64-unknown-linux-gnu -o /dev/null -debug-pass-manager 2>&1 | FileCheck %s --check-prefix=NOCOLDSCAN --implicit-check-not=BlockFrequencyAnalysis --implicit-check-not=LoopAnalysis
 
 ; Make sure that the call to dbg.declare does not prevent running BlockFrequency
-; and (especially) Loop Analysis.
+; and (especially) Loop Analysis when the target uses the cold-call scan.
 ; Later passes (e.g. instcombine) may behave in different ways depending on if
 ; LoopInfo is available or not. Therefore, letting GlobalOpt run or not run
 ; LoopAnalysis depending on the presence of a dbg.declare may make the compiler
 ; generate different code with and without debug info.
+; A target which does not use coldcc must skip these analyses both with and
+; without debug info.
 
-; CHECK: Running pass: GlobalOptPass on [module]
-; CHECK: Running analysis: BlockFrequencyAnalysis on h
-; CHECK: Running analysis: LoopAnalysis on h
+; COLDSCAN: Running pass: GlobalOptPass on [module]
+; COLDSCAN: Running analysis: BlockFrequencyAnalysis on h
+; COLDSCAN: Running analysis: LoopAnalysis on h
+; NOCOLDSCAN: Running pass: GlobalOptPass on [module]
 
 define i16 @h(ptr %k) {
 entry:

@@ -1943,9 +1943,18 @@ OptimizeFunctions(Module &M,
 
   ChangeableCCCacheTy ChangeableCCCache;
   std::vector<Function *> AllCallsCold;
-  for (Function &F : llvm::make_early_inc_range(M))
-    if (hasOnlyColdCalls(F, GetBFI, ChangeableCCCache))
-      AllCallsCold.push_back(&F);
+  // The cold-call scan can request block frequencies for many callers. Avoid
+  // this work when no function's target uses the cold calling convention.
+  // Keep the scan before mutating functions on targets which do use it.
+  const bool MayUseColdCC =
+      EnableColdCCStressTest || llvm::any_of(M, [&](Function &F) {
+        return !F.isDeclaration() && GetTTI(F).useColdCCForColdCall(F);
+      });
+  if (MayUseColdCC) {
+    for (Function &F : llvm::make_early_inc_range(M))
+      if (hasOnlyColdCalls(F, GetBFI, ChangeableCCCache))
+        AllCallsCold.push_back(&F);
+  }
 
   // Optimize functions.
   for (Function &F : llvm::make_early_inc_range(M)) {
